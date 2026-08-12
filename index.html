@@ -350,6 +350,9 @@
   .grid.solo-mode{
     grid-template-columns:1fr;
   }
+  .grid.trio-mode{
+    grid-template-columns:1fr 1fr 1fr;
+  }
 
   .video-tile{
     position:relative;
@@ -713,13 +716,12 @@
           <span class="mode-sub">Você e mais uma pessoa</span>
         </span>
       </button>
-      <button class="mode-opt disabled" id="modeGuest2Btn" type="button">
+      <button class="mode-opt" id="modeGuest2Btn" type="button">
         <span class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.6-5.6 5.5-5.6s5.5 2 5.5 5.6"/><circle cx="17" cy="9" r="2.6"/><path d="M14.8 14.8c2.4.2 4.2 2 4.2 5.2"/></svg></span>
         <span class="mode-text">
           <span class="mode-title">+ 2 convidados</span>
           <span class="mode-sub">Você e mais duas pessoas</span>
         </span>
-        <span class="mode-tag">Em breve</span>
       </button>
     </div>
     <div class="mode-note" id="modeNote"></div>
@@ -806,6 +808,23 @@
         <button class="tile-icon-btn" id="remoteSpotlightBtn" title="Aumentar câmera do convidado">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
         </button>
+      </div>
+    </div>
+
+    <div class="video-tile" id="remoteTile2" style="display:none;">
+      <video id="remoteVideo2" autoplay playsinline disablepictureinpicture disableremoteplayback controlsList="nofullscreen nodownload noremoteplayback"></video>
+      <div class="empty-tile" id="remoteEmpty2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10l6-3v10l-6-3"/></svg>
+        <span id="remoteEmptyText2">Aguardando conexão…</span>
+      </div>
+      <div class="cam-off-cover" id="remoteCamOff2">
+        <div class="avatar-ring">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 20c0-4 3.5-6 8-6s8 2 8 6"/><circle cx="12" cy="8" r="4"/></svg>
+        </div>
+      </div>
+      <div class="tile-label" id="remoteLabelWrap2" style="display:none;">
+        <span class="badge" id="remoteMicBadge2"></span>
+        <span id="remoteNameLabel2">Convidado</span>
       </div>
     </div>
 
@@ -967,7 +986,16 @@
     camOn: true,
     peerMicOn: true,
     peerCamOn: true,
-    idleTimer: null
+    idleTimer: null,
+    trio: {
+      active: false,
+      mySlot: null,        // 'host' | 'guest1' | 'guest2'
+      roomId: null,
+      tileAssignment: {},  // { guest1:'A', guest2:'B' } etc, computed from mySlot
+      remotes: {},          // slot -> { call, dataConn, connected, name, micOn, camOn }
+      screenCalls: {},
+      enteredStage: false
+    }
   };
 
   /* ---------------- DOM refs ---------------- */
@@ -1020,6 +1048,14 @@
   const imageRow = $('imageRow');
   const stageGrid = $('stageGrid');
   const remoteTile = $('remoteTile');
+  const remoteTile2 = $('remoteTile2');
+  const remoteVideo2 = $('remoteVideo2');
+  const remoteCamOff2 = $('remoteCamOff2');
+  const remoteEmpty2 = $('remoteEmpty2');
+  const remoteEmptyText2 = $('remoteEmptyText2');
+  const remoteLabelWrap2 = $('remoteLabelWrap2');
+  const remoteNameLabel2 = $('remoteNameLabel2');
+  const remoteMicBadge2 = $('remoteMicBadge2');
   const statusWrap = $('statusWrap');
   const expandWrap = $('expandWrap');
   const expandBtn = $('expandBtn');
@@ -1062,10 +1098,10 @@
     statusDot.className = 'status-dot' + (kind ? ' ' + kind : '');
   }
 
-  function genRoomId(){
+  function genRoomId(prefix){
     const bytes = new Uint8Array(5);
     crypto.getRandomValues(bytes);
-    return 'edh-' + Array.from(bytes, b => b.toString(16).padStart(2,'0')).join('');
+    return (prefix || 'edh') + '-' + Array.from(bytes, b => b.toString(16).padStart(2,'0')).join('');
   }
 
   function updateMicUI(){
@@ -1086,9 +1122,20 @@
   }
 
   function sendData(msg){
+    if (state.trio.active){
+      broadcastTrioData(msg);
+      return;
+    }
     if (state.dataConn && state.dataConn.open){
       try{ state.dataConn.send(msg); }catch(e){ console.warn('send failed', e); }
     }
+  }
+  function broadcastTrioData(msg){
+    Object.values(state.trio.remotes).forEach((entry) => {
+      if (entry.dataConn && entry.dataConn.open){
+        try{ entry.dataConn.send(msg); }catch(e){ console.warn('send failed', e); }
+      }
+    });
   }
 
   /* ---------------- Idle controls auto-hide ---------------- */
@@ -1464,7 +1511,15 @@
       showScreenVideo(stream);
       updateScreenShareUI(true);
       stream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
-      if (state.remotePeerId && state.peer){
+      if (state.trio.active){
+        state.trio.screenCalls = {};
+        Object.keys(state.trio.remotes).forEach((slot) => {
+          const entry = state.trio.remotes[slot];
+          if (entry.connected && state.peer){
+            state.trio.screenCalls[slot] = state.peer.call(peerIdForSlot(slot), stream, { metadata:{ kind:'screen' } });
+          }
+        });
+      } else if (state.remotePeerId && state.peer){
         state.screenCall = state.peer.call(state.remotePeerId, stream, { metadata:{ kind:'screen' } });
       }
     }catch(e){
@@ -1476,6 +1531,10 @@
     try{ state.screenStream.getTracks().forEach(t => t.stop()); }catch(e){}
     state.screenStream = null;
     if (state.screenCall){ try{ state.screenCall.close(); }catch(e){} state.screenCall = null; }
+    if (state.trio.screenCalls){
+      Object.values(state.trio.screenCalls).forEach((c) => { try{ c.close(); }catch(e){} });
+      state.trio.screenCalls = {};
+    }
     hideScreenVideo();
     updateScreenShareUI(false);
     sendData({ type:'screen-stop' });
@@ -1525,6 +1584,15 @@
     try{ if (state.call) state.call.close(); }catch(e){}
     try{ if (state.screenCall) state.screenCall.close(); }catch(e){}
     try{ if (state.dataConn) state.dataConn.close(); }catch(e){}
+    if (state.trio.active){
+      try{
+        Object.values(state.trio.remotes).forEach((entry) => {
+          if (entry.call){ try{ entry.call.close(); }catch(e){} }
+          if (entry.dataConn){ try{ entry.dataConn.close(); }catch(e){} }
+        });
+        Object.values(state.trio.screenCalls || {}).forEach((c) => { try{ c.close(); }catch(e){} });
+      }catch(e){}
+    }
     try{ if (state.peer) state.peer.destroy(); }catch(e){}
     window.location.href = window.location.pathname;
   }
@@ -1706,6 +1774,305 @@
     });
   }
 
+  /* ================= TRIO FLOW (host + 2 guests, full mesh) ================= */
+  const TRIO_SLOTS = ['host', 'guest1', 'guest2'];
+  const TRIO_OUTGOING = { host: [], guest1: ['host'], guest2: ['host', 'guest1'] };
+
+  function peerIdForSlot(slot){ return state.trio.roomId + '-' + slot; }
+  function slotFromPeerId(peerId){ return peerId.split('-').pop(); }
+
+  function computeTrioTileAssignment(mySlot){
+    const others = TRIO_SLOTS.filter((s) => s !== mySlot);
+    const map = {};
+    map[others[0]] = 'A';
+    map[others[1]] = 'B';
+    return map;
+  }
+
+  function trioTileRefs(tileKey){
+    const suffix = tileKey === 'A' ? '' : '2';
+    return {
+      tile: $('remoteTile' + suffix),
+      video: $('remoteVideo' + suffix),
+      camOff: $('remoteCamOff' + suffix),
+      empty: $('remoteEmpty' + suffix),
+      emptyText: $('remoteEmptyText' + suffix),
+      labelWrap: $('remoteLabelWrap' + suffix),
+      nameLabel: $('remoteNameLabel' + suffix),
+      micBadge: $('remoteMicBadge' + suffix)
+    };
+  }
+  function trioTileForSlot(slot){
+    const key = state.trio.tileAssignment[slot];
+    return key ? trioTileRefs(key) : null;
+  }
+
+  function ensureTrioRemote(slot){
+    if (!state.trio.remotes[slot]){
+      state.trio.remotes[slot] = { call:null, dataConn:null, connected:false, name:'', micOn:true, camOn:true };
+    }
+    return state.trio.remotes[slot];
+  }
+
+  function updateTrioStatus(){
+    const connected = Object.keys(state.trio.remotes).filter((s) => state.trio.remotes[s].connected);
+    if (!connected.length){
+      livePill.classList.remove('on');
+      setStatus('Aguardando convidados…', '');
+    } else {
+      livePill.classList.add('on');
+      const names = connected.map((s) => state.trio.remotes[s].name || (s === 'host' ? 'anfitrião' : 'convidado'));
+      setStatus('Conectado com ' + names.join(' e '), 'live');
+    }
+  }
+
+  function onTrioRemoteConnected(slot){
+    enterTrioStageUI();
+    const t = trioTileForSlot(slot);
+    if (!t) return;
+    t.empty.style.display = 'none';
+    t.labelWrap.style.display = 'flex';
+    updateTrioStatus();
+  }
+  function onTrioRemoteDisconnected(slot){
+    const t = trioTileForSlot(slot);
+    if (t){
+      t.video.srcObject = null;
+      t.empty.style.display = 'flex';
+      t.emptyText.textContent = 'A conexão caiu.';
+      t.labelWrap.style.display = 'none';
+      t.camOff.classList.remove('show');
+    }
+    const entry = state.trio.remotes[slot];
+    if (entry) entry.connected = false;
+    updateTrioStatus();
+  }
+
+  function registerTrioCall(slot, call){
+    const entry = ensureTrioRemote(slot);
+    entry.call = call;
+    call.on('stream', (stream) => {
+      entry.connected = true;
+      const t = trioTileForSlot(slot);
+      if (t) t.video.srcObject = stream;
+      onTrioRemoteConnected(slot);
+    });
+    call.on('close', () => onTrioRemoteDisconnected(slot));
+  }
+  function registerTrioDataConn(slot, conn){
+    const entry = ensureTrioRemote(slot);
+    entry.dataConn = conn;
+    conn.on('open', () => {
+      sendTrioDataTo(slot, { type:'hello', name: state.myName });
+      if (state.trio.mySlot === 'host'){
+        sendTrioDataTo(slot, getMetaPayload());
+        if (state.coverSrc) sendTrioDataTo(slot, { type:'cover', src: state.coverSrc });
+      }
+    });
+    conn.on('data', (msg) => handleTrioDataMessage(slot, msg));
+    conn.on('close', () => onTrioRemoteDisconnected(slot));
+  }
+  function sendTrioDataTo(slot, msg){
+    const entry = state.trio.remotes[slot];
+    if (entry && entry.dataConn && entry.dataConn.open){
+      try{ entry.dataConn.send(msg); }catch(e){ console.warn('send failed', e); }
+    }
+  }
+
+  function handleTrioDataMessage(fromSlot, msg){
+    if (!msg || !msg.type) return;
+    if (msg.type === 'hello'){
+      const entry = ensureTrioRemote(fromSlot);
+      entry.name = msg.name || (fromSlot === 'host' ? 'Anfitrião' : 'Convidado');
+      const t = trioTileForSlot(fromSlot);
+      if (t) t.nameLabel.textContent = entry.name;
+      updateTrioStatus();
+    } else if (msg.type === 'state'){
+      const entry = ensureTrioRemote(fromSlot);
+      entry.micOn = msg.mic;
+      entry.camOn = msg.cam;
+      const t = trioTileForSlot(fromSlot);
+      if (t){
+        t.micBadge.innerHTML = entry.micOn ? '' : ICONS.micBadgeOff;
+        t.micBadge.className = 'badge' + (entry.micOn ? '' : ' muted');
+        t.camOff.classList.toggle('show', !entry.camOn);
+      }
+    } else {
+      // Panel-level sync (meta, cover, image, screen-stop, expand-state) is global, reuse the shared handler
+      handleDataMessage(msg);
+    }
+  }
+
+  function trioHandleIncomingCall(call){
+    if (call.metadata && call.metadata.kind === 'screen'){
+      call.answer();
+      call.on('stream', (screenStream) => { showScreenVideo(screenStream); });
+      call.on('close', () => { hideScreenVideo(); });
+      return;
+    }
+    const fromSlot = slotFromPeerId(call.peer);
+    call.answer(state.localStream);
+    registerTrioCall(fromSlot, call);
+  }
+  function trioHandleIncomingConn(conn){
+    const fromSlot = slotFromPeerId(conn.peer);
+    registerTrioDataConn(fromSlot, conn);
+  }
+
+  function tryConnectTrioSlot(targetSlot){
+    const targetId = peerIdForSlot(targetSlot);
+    let attempts = 0;
+    function attempt(){
+      const entry = state.trio.remotes[targetSlot];
+      if (entry && entry.connected) return;
+      if (!state.peer || state.peer.disconnected || state.peer.destroyed) return;
+      attempts++;
+      const call = state.peer.call(targetId, state.localStream);
+      registerTrioCall(targetSlot, call);
+      const conn = state.peer.connect(targetId);
+      registerTrioDataConn(targetSlot, conn);
+      if (attempts < 40){
+        setTimeout(() => {
+          const e = state.trio.remotes[targetSlot];
+          if (!e || !e.connected) attempt();
+        }, 3000);
+      }
+    }
+    attempt();
+  }
+
+  function enterTrioStageUI(){
+    if (state.trio.enteredStage) return;
+    state.trio.enteredStage = true;
+    stageGrid.classList.add('trio-mode');
+    remoteTile2.style.display = '';
+    localSpotlightWrap.style.display = 'none';
+    remoteSpotlightWrap.style.display = 'none';
+    enterStage();
+  }
+
+  function startTrioHost(){
+    state.role = 'host';
+    state.trio.active = true;
+    state.trio.mySlot = 'host';
+    state.trio.roomId = genRoomId('edh3');
+    state.trio.tileAssignment = computeTrioTileAssignment('host');
+    applyRolePermissions();
+    primaryActionBtn.disabled = true;
+    primaryActionBtn.textContent = 'Ativando câmera…';
+    backToModeBtn.style.display = 'none';
+    navigator.mediaDevices.getUserMedia({ video:true, audio:true }).then((stream) => {
+      state.localStream = stream;
+      localVideo.srcObject = stream;
+
+      state.peer = new Peer(peerIdForSlot('host'), { debug: 1 });
+
+      state.peer.on('open', () => {
+        const link = window.location.origin + window.location.pathname + '?room=' + state.trio.roomId + '&mode=trio';
+        roomLinkInput.value = link;
+        linkBox.style.display = 'block';
+        waitingPulse.style.display = 'flex';
+        waitingText.textContent = 'Aguardando os convidados entrarem…';
+        primaryActionBtn.style.display = 'none';
+        nameInput.disabled = true;
+        subtitleText.textContent = 'Sala criada. Envie o link abaixo para os convidados entrarem.';
+      });
+
+      state.peer.on('call', trioHandleIncomingCall);
+      state.peer.on('connection', trioHandleIncomingConn);
+
+      state.peer.on('error', (err) => {
+        console.error(err);
+        if (String(err.type) === 'unavailable-id'){
+          showError('Essa sala já está em uso. Recarregue a página e tente novamente.');
+        } else {
+          showError('Erro de conexão (' + err.type + '). Verifique sua internet e tente novamente.');
+        }
+        primaryActionBtn.disabled = false;
+        primaryActionBtn.textContent = 'Criar sala';
+      });
+
+      state.peer.on('disconnected', () => { state.peer.reconnect(); });
+
+    }).catch((err) => {
+      console.error(err);
+      showError('Não foi possível acessar sua câmera/microfone. Verifique as permissões do navegador e recarregue a página.');
+      primaryActionBtn.disabled = false;
+      primaryActionBtn.textContent = 'Criar sala';
+    });
+  }
+
+  function claimTrioGuestSlot(roomId, onReady, onFull){
+    function tryClaim(slot){
+      const p = new Peer(roomId + '-' + slot, { debug: 1 });
+      p.on('open', () => onReady(p, slot));
+      p.on('error', (err) => {
+        if (String(err.type) === 'unavailable-id'){
+          try{ p.destroy(); }catch(e){}
+          if (slot === 'guest1') tryClaim('guest2');
+          else onFull(null);
+        } else {
+          onFull(err);
+        }
+      });
+    }
+    tryClaim('guest1');
+  }
+
+  function startTrioGuestFlow(roomId){
+    state.role = 'guest';
+    state.trio.active = true;
+    state.trio.roomId = roomId;
+    primaryActionBtn.disabled = true;
+    primaryActionBtn.textContent = 'Ativando câmera…';
+    backToModeBtn.style.display = 'none';
+    navigator.mediaDevices.getUserMedia({ video:true, audio:true }).then((stream) => {
+      state.localStream = stream;
+      localVideo.srcObject = stream;
+      waitingPulse.style.display = 'flex';
+      waitingText.textContent = 'Conectando à sala…';
+      primaryActionBtn.style.display = 'none';
+      nameInput.disabled = true;
+
+      claimTrioGuestSlot(roomId, (peer, slot) => {
+        state.peer = peer;
+        state.trio.mySlot = slot;
+        state.trio.tileAssignment = computeTrioTileAssignment(slot);
+        applyRolePermissions();
+
+        peer.on('call', trioHandleIncomingCall);
+        peer.on('connection', trioHandleIncomingConn);
+        peer.on('error', (err) => {
+          console.error(err);
+          showError('Erro de conexão (' + err.type + '). Verifique sua internet e tente novamente.');
+        });
+        peer.on('disconnected', () => { peer.reconnect(); });
+
+        enterTrioStageUI();
+        TRIO_OUTGOING[slot].forEach((target) => tryConnectTrioSlot(target));
+      }, (err) => {
+        console.error(err);
+        if (err){
+          showError('Erro de conexão (' + err.type + '). Verifique sua internet e tente novamente.');
+        } else {
+          showError('Essa sala já está com o número máximo de participantes (você + 2 convidados).');
+        }
+        primaryActionBtn.disabled = false;
+        primaryActionBtn.textContent = 'Entrar na sala';
+        waitingPulse.style.display = 'none';
+        primaryActionBtn.style.display = 'inline-flex';
+        nameInput.disabled = false;
+        backToModeBtn.style.display = '';
+      });
+
+    }).catch((err) => {
+      console.error(err);
+      showError('Não foi possível acessar sua câmera/microfone. Verifique as permissões do navegador e recarregue a página.');
+      primaryActionBtn.disabled = false;
+      primaryActionBtn.textContent = 'Entrar na sala';
+    });
+  }
+
   /* ---------------- Editable side panels (host-controlled, synced to guest) ---------------- */
   const LS_KEYS = { episode:'edh_episode', social:'edh_social', tiktok:'edh_tiktok' };
   const metaFields = [
@@ -1786,6 +2153,13 @@
   }
 
   /* ---------------- Mode select screen ---------------- */
+  let currentPrimaryHandler = null;
+  function setPrimaryAction(handler){
+    if (currentPrimaryHandler) primaryActionBtn.removeEventListener('click', currentPrimaryHandler);
+    currentPrimaryHandler = handler;
+    primaryActionBtn.addEventListener('click', handler);
+  }
+
   function goToNameScreen(mode){
     state.mode = mode;
     clearError();
@@ -1798,21 +2172,29 @@
     linkBox.style.display = 'none';
     waitingPulse.style.display = 'none';
 
-    primaryActionBtn.onclick = null;
     if (mode === 'solo'){
       startTitle.textContent = 'SOZINHO';
       subtitleText.textContent = 'Ative sua câmera e microfone para começar a gravar.';
       primaryActionBtn.textContent = 'Começar';
-      primaryActionBtn.addEventListener('click', () => {
+      setPrimaryAction(() => {
         clearError();
         state.myName = nameInput.value.trim();
         startSolo();
+      });
+    } else if (mode === 'trio'){
+      startTitle.textContent = '+ 2 CONVIDADOS';
+      subtitleText.textContent = 'Estúdio virtual para até 3 pessoas. Ative sua câmera e microfone para criar a sala.';
+      primaryActionBtn.textContent = 'Criar sala';
+      setPrimaryAction(() => {
+        clearError();
+        state.myName = nameInput.value.trim();
+        startTrioHost();
       });
     } else {
       startTitle.textContent = '+ 1 CONVIDADO';
       subtitleText.textContent = 'Estúdio virtual. Ative sua câmera e microfone para entrar.';
       primaryActionBtn.textContent = 'Criar sala';
-      primaryActionBtn.addEventListener('click', () => {
+      setPrimaryAction(() => {
         clearError();
         state.myName = nameInput.value.trim();
         startHost();
@@ -1822,10 +2204,7 @@
 
   modeSoloBtn.addEventListener('click', () => goToNameScreen('solo'));
   modeGuest1Btn.addEventListener('click', () => goToNameScreen('guest1'));
-  modeGuest2Btn.addEventListener('click', () => {
-    modeNote.textContent = 'O modo com 2 convidados ainda está em desenvolvimento. Por enquanto, use "Sozinho" ou "+ 1 convidado".';
-    modeNote.style.display = 'block';
-  });
+  modeGuest2Btn.addEventListener('click', () => goToNameScreen('trio'));
   backToModeBtn.addEventListener('click', () => {
     startScreen.style.display = 'none';
     modeScreen.style.display = 'flex';
@@ -1840,15 +2219,28 @@
     if (savedCover) showCover(savedCover);
     const params = new URLSearchParams(window.location.search);
     const room = params.get('room');
+    const urlMode = params.get('mode');
 
-    if (room){
+    if (room && urlMode === 'trio'){
       modeScreen.style.display = 'none';
       startScreen.style.display = 'flex';
       backToModeBtn.style.display = 'none';
       startTitle.textContent = 'ENTRAR NA SALA';
       subtitleText.textContent = 'Você foi convidado para o estúdio. Digite seu nome e entre na sala.';
       primaryActionBtn.textContent = 'Entrar na sala';
-      primaryActionBtn.addEventListener('click', () => {
+      setPrimaryAction(() => {
+        clearError();
+        state.myName = nameInput.value.trim();
+        startTrioGuestFlow(room);
+      });
+    } else if (room){
+      modeScreen.style.display = 'none';
+      startScreen.style.display = 'flex';
+      backToModeBtn.style.display = 'none';
+      startTitle.textContent = 'ENTRAR NA SALA';
+      subtitleText.textContent = 'Você foi convidado para o estúdio. Digite seu nome e entre na sala.';
+      primaryActionBtn.textContent = 'Entrar na sala';
+      setPrimaryAction(() => {
         clearError();
         state.myName = nameInput.value.trim();
         startGuest(room);
