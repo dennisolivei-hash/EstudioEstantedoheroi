@@ -1204,6 +1204,14 @@
         const sender = state.call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
         if (sender) sender.replaceTrack(newTrack);
       }
+      if (state.trio && state.trio.active && state.trio.remotes){
+        Object.values(state.trio.remotes).forEach((entry) => {
+          if (entry && entry.call && entry.call.peerConnection){
+            const sender = entry.call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (sender) sender.replaceTrack(newTrack);
+          }
+        });
+      }
       state.currentCameraId = deviceId;
     }catch(e){
       console.warn('Erro ao trocar de câmera', e);
