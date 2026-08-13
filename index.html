@@ -508,13 +508,17 @@
   }
 
   /* PIP automático: quando a tela é compartilhada, a(s) câmera(s) encolhem
-     e vão pro canto, deixando a tela compartilhada ocupar o espaço todo */
+     e vão pro canto, deixando a tela compartilhada ocupar o espaço todo.
+     As câmeras saem do fluxo do grid (position:fixed), então o image-row
+     precisa de grid-row explícito -- senão ele "sobe" pra linha 1 (que
+     fica com altura 0) e a tela compartilhada some. */
   #stageGrid.screen-pip-mode{
     grid-template-rows:0 1fr;
     gap:0;
   }
   #stageGrid.screen-pip-mode #localTile,
-  #stageGrid.screen-pip-mode #remoteTile{
+  #stageGrid.screen-pip-mode #remoteTile,
+  #stageGrid.screen-pip-mode #remoteTile2{
     position:fixed;
     width:190px; height:120px;
     right:26px;
@@ -523,8 +527,10 @@
   }
   #stageGrid.screen-pip-mode #localTile{ bottom:112px; }
   #stageGrid.screen-pip-mode #remoteTile{ bottom:246px; }
-  #stageGrid.screen-pip-mode #remoteTile2{ display:none !important; }
+  #stageGrid.screen-pip-mode #remoteTile2{ bottom:380px; }
   #stageGrid.screen-pip-mode .image-row{
+    grid-row:2;
+    grid-column:1 / -1;
     min-height:0;
     max-height:none;
   }
@@ -716,12 +722,14 @@
       right:16px; bottom:104px;
     }
     #stageGrid.screen-pip-mode #localTile,
-    #stageGrid.screen-pip-mode #remoteTile{
+    #stageGrid.screen-pip-mode #remoteTile,
+    #stageGrid.screen-pip-mode #remoteTile2{
       width:120px; height:80px;
       right:16px;
     }
     #stageGrid.screen-pip-mode #localTile{ bottom:104px; }
-    #stageGrid.screen-pip-mode #remoteTile{ bottom:196px; }
+    #stageGrid.screen-pip-mode #remoteTile{ bottom:198px; }
+    #stageGrid.screen-pip-mode #remoteTile2{ bottom:292px; }
   }
 </style>
 </head>
