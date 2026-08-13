@@ -507,6 +507,32 @@
     display:none;
   }
 
+  /* PIP automático: quando a tela é compartilhada, a(s) câmera(s) encolhem
+     e vão pro canto, deixando a tela compartilhada ocupar o espaço todo */
+  #stageGrid.screen-pip-mode{
+    grid-template-rows:0 1fr;
+    gap:0;
+  }
+  #stageGrid.screen-pip-mode #localTile,
+  #stageGrid.screen-pip-mode #remoteTile{
+    position:fixed;
+    width:190px; height:120px;
+    right:26px;
+    z-index:41;
+    box-shadow:0 10px 30px rgba(0,0,0,.6);
+  }
+  #stageGrid.screen-pip-mode #localTile{ bottom:112px; }
+  #stageGrid.screen-pip-mode #remoteTile{ bottom:246px; }
+  #stageGrid.screen-pip-mode #remoteTile2{ display:none !important; }
+  #stageGrid.screen-pip-mode .image-row{
+    min-height:0;
+    max-height:none;
+  }
+  #stageGrid.screen-pip-mode .image-row .side-panel,
+  #stageGrid.screen-pip-mode .image-row #coverTile{
+    display:none;
+  }
+
   video::-webkit-media-controls{ display:none !important; }
 
   .side-panel{
@@ -689,6 +715,13 @@
       width:120px; height:80px;
       right:16px; bottom:104px;
     }
+    #stageGrid.screen-pip-mode #localTile,
+    #stageGrid.screen-pip-mode #remoteTile{
+      width:120px; height:80px;
+      right:16px;
+    }
+    #stageGrid.screen-pip-mode #localTile{ bottom:104px; }
+    #stageGrid.screen-pip-mode #remoteTile{ bottom:196px; }
   }
 </style>
 </head>
@@ -1499,11 +1532,14 @@
   function showScreenVideo(stream){
     screenVideo.srcObject = stream;
     imageTile.classList.add('screen-active');
+    if (state.camSpotlightTarget) applyCamSpotlight(null);
+    stageGrid.classList.add('screen-pip-mode');
     refreshExpandAvailability();
   }
   function hideScreenVideo(){
     screenVideo.srcObject = null;
     imageTile.classList.remove('screen-active');
+    stageGrid.classList.remove('screen-pip-mode');
     refreshExpandAvailability();
   }
 
