@@ -1602,13 +1602,16 @@
     screenVideo.srcObject = stream;
     imageTile.classList.add('screen-active');
     if (state.camSpotlightTarget) applyCamSpotlight(null);
-    stageGrid.classList.add('screen-pip-mode');
+    /* Compartilhamento de tela agora abre pequeno, no mesmo quadro onde a capa/imagem
+       aparece — igual a anexar uma imagem. Antes ele forçava um modo "PIP automático"
+       que sempre ocupava a tela toda e não tinha como desfazer. O botão de
+       aumentar/diminuir (expandBtn) já existente cuida do resto. */
+    if (state.imageExpanded) setExpanded(false);
     refreshExpandAvailability();
   }
   function hideScreenVideo(){
     screenVideo.srcObject = null;
     imageTile.classList.remove('screen-active');
-    stageGrid.classList.remove('screen-pip-mode');
     refreshExpandAvailability();
   }
 
