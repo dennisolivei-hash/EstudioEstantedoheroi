@@ -1768,8 +1768,10 @@
     tickerTrack.style.animationDuration = duration + 's';
   }
   function updateTickerVisibility(){
+    /* Antes só aparecia durante o compartilhamento de tela; agora fica fixo sempre
+       que houver texto configurado, desde a abertura do estúdio. */
     const hasText = !!(state.ticker && state.ticker.trim());
-    tickerBar.style.display = (hasText && imageTile.classList.contains('screen-active')) ? 'flex' : 'none';
+    tickerBar.style.display = hasText ? 'flex' : 'none';
   }
   function applyTicker(text){
     state.ticker = text || '';
