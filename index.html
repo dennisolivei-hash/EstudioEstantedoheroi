@@ -574,9 +574,9 @@
     z-index:41;
     box-shadow:0 10px 30px rgba(0,0,0,.6);
   }
-  #stageGrid.screen-overlay #localTile{ bottom:112px; }
-  #stageGrid.screen-overlay #remoteTile{ bottom:297px; }
-  #stageGrid.screen-overlay #remoteTile2{ bottom:482px; }
+  #stageGrid.screen-overlay #localTile{ bottom:140px; }
+  #stageGrid.screen-overlay #remoteTile{ bottom:325px; }
+  #stageGrid.screen-overlay #remoteTile2{ bottom:510px; }
   #stageGrid.screen-overlay #imageRow{
     grid-row:2;
     grid-column:1 / -1;
@@ -586,7 +586,7 @@
     position:fixed;
     width:260px; height:165px;
     left:28px;
-    bottom:112px;
+    bottom:140px;
     z-index:41;
     box-shadow:0 10px 30px rgba(0,0,0,.6);
   }
@@ -734,6 +734,64 @@
 
   #imageInput{ display:none; }
 
+  /* ---------- LETREIRO (faixa de texto rolando, tipo telejornal) ---------- */
+  .ticker-edit-input{
+    width:100%;
+    background:var(--bg-panel);
+    border:1px solid var(--border);
+    border-radius:8px;
+    color:var(--text);
+    font-family:inherit;
+    font-size:13px;
+    padding:8px 10px;
+  }
+  .ticker-edit-input:focus{ outline:none; border-color:var(--green); }
+  .ticker-bar{
+    flex-shrink:0;
+    height:40px;
+    margin-bottom:12px;
+    display:flex; align-items:stretch;
+    background:linear-gradient(180deg, rgba(5,7,10,.92), rgba(5,7,10,.97));
+    border:1px solid var(--border);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  .ticker-label{
+    flex-shrink:0;
+    display:flex; align-items:center;
+    background:var(--red);
+    color:#1a0407;
+    font-family:var(--font-display);
+    letter-spacing:.06em;
+    font-size:15px;
+    padding:0 16px;
+  }
+  .ticker-viewport{
+    flex:1; min-width:0;
+    position:relative;
+    overflow:hidden;
+  }
+  .ticker-track{
+    position:absolute; top:0; left:0; height:100%;
+    display:flex; align-items:center;
+    white-space:nowrap;
+    will-change:transform;
+    animation-name:ticker-scroll;
+    animation-timing-function:linear;
+    animation-iteration-count:infinite;
+  }
+  .ticker-track span{
+    display:inline-block;
+    padding-right:90px;
+    font-size:16px; font-weight:600;
+    color:var(--text);
+  }
+  @keyframes ticker-scroll{
+    from{ transform:translateX(0); }
+    to{ transform:translateX(-50%); }
+  }
+
+
   .channel-tag{
     position:fixed; left:20px; bottom:16px;
     z-index:3;
@@ -779,12 +837,12 @@
       width:165px; height:105px;
       right:16px;
     }
-    #stageGrid.screen-overlay #localTile{ bottom:104px; }
-    #stageGrid.screen-overlay #remoteTile{ bottom:223px; }
-    #stageGrid.screen-overlay #remoteTile2{ bottom:342px; }
+    #stageGrid.screen-overlay #localTile{ bottom:130px; }
+    #stageGrid.screen-overlay #remoteTile{ bottom:249px; }
+    #stageGrid.screen-overlay #remoteTile2{ bottom:368px; }
     #stageGrid.screen-overlay #imageRow #coverTile{
       width:165px; height:105px;
-      left:16px; bottom:104px;
+      left:16px; bottom:130px;
     }
   }
 </style>
@@ -991,6 +1049,16 @@
     </div>
   </div>
 
+  <div class="ticker-bar" id="tickerBar" style="display:none;">
+    <div class="ticker-label">AO VIVO</div>
+    <div class="ticker-viewport">
+      <div class="ticker-track" id="tickerTrack">
+        <span id="tickerTextA"></span>
+        <span id="tickerTextB"></span>
+      </div>
+    </div>
+  </div>
+
   <div class="controls" id="controls">
     <button class="ctrl-btn" id="micBtn" title="Mudo / ativar microfone (M)"></button>
     <button class="ctrl-btn" id="camBtn" title="Ligar / desligar câmera (C)"></button>
@@ -1016,6 +1084,16 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:16px;height:16px;"><rect x="2.5" y="4.5" width="19" height="13" rx="2"/><path d="M8 20h8M12 17.5V20"/></svg>
       Compartilhar tela
     </button>
+    <div class="cam-select-wrap" id="tickerWrap">
+      <button class="ctrl-btn wide" id="tickerBtn" title="Editar letreiro">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:16px;height:16px;"><path d="M3 7h18M3 12h12M3 17h15"/></svg>
+        Letreiro
+      </button>
+      <div class="device-panel ticker-panel" id="tickerPanel" style="display:none;">
+        <div class="device-panel-title">Letreiro (aparece quando a tela estiver sendo compartilhada)</div>
+        <input type="text" id="tickerInput" class="ticker-edit-input" placeholder="Digite a mensagem que vai passar na faixa…" maxlength="220">
+      </div>
+    </div>
     <button class="ctrl-btn danger" id="leaveBtn" title="Sair da sala">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.5 7.5l-6 4.5 6 4.5M4.5 12h12M14.5 4.5h4a1 1 0 011 1v13a1 1 0 01-1 1h-4"/></svg>
     </button>
@@ -1085,6 +1163,7 @@
     screenStream: null,
     screenCall: null,
     coverSrc: null,
+    ticker: '',
     slideshowImages: [],
     slideshowOrder: [],
     slideshowIndex: 0,
@@ -1194,6 +1273,15 @@
   const channelTag = $('channelTag');
   const footerCopy = $('footerCopy');
   const fsBtn = $('fsBtn');
+
+  const tickerWrap = $('tickerWrap');
+  const tickerBtn = $('tickerBtn');
+  const tickerPanel = $('tickerPanel');
+  const tickerInput = $('tickerInput');
+  const tickerBar = $('tickerBar');
+  const tickerTrack = $('tickerTrack');
+  const tickerTextA = $('tickerTextA');
+  const tickerTextB = $('tickerTextB');
 
   /* ---------------- Helpers ---------------- */
   function showError(msg){
@@ -1655,12 +1743,35 @@
     if (state.imageExpanded) setExpanded(false);
     updateScreenOverlayMode();
     refreshExpandAvailability();
+    updateTickerVisibility();
   }
   function hideScreenVideo(){
     screenVideo.srcObject = null;
     imageTile.classList.remove('screen-active');
     updateScreenOverlayMode();
     refreshExpandAvailability();
+    updateTickerVisibility();
+  }
+
+  /* ---------------- Letreiro (faixa de texto rolando, tipo telejornal) ----------------
+     Só aparece enquanto a tela estiver sendo compartilhada. O texto é digitado pelo
+     host no painel do botão "Letreiro" e sincroniza pro convidado junto com os outros
+     campos (episódio/redes), do mesmo jeito que já funcionava pra eles. */
+  function setTickerAnimationSpeed(text){
+    const len = (text || '').length;
+    const duration = Math.max(10, Math.min(55, len * 0.22 + 6));
+    tickerTrack.style.animationDuration = duration + 's';
+  }
+  function updateTickerVisibility(){
+    const hasText = !!(state.ticker && state.ticker.trim());
+    tickerBar.style.display = (hasText && imageTile.classList.contains('screen-active')) ? 'flex' : 'none';
+  }
+  function applyTicker(text){
+    state.ticker = text || '';
+    tickerTextA.textContent = state.ticker;
+    tickerTextB.textContent = state.ticker;
+    setTickerAnimationSpeed(state.ticker);
+    updateTickerVisibility();
   }
 
   async function startScreenShare(){
@@ -2230,7 +2341,7 @@
   }
 
   /* ---------------- Editable side panels (host-controlled, synced to guest) ---------------- */
-  const LS_KEYS = { episode:'edh_episode', social:'edh_social', tiktok:'edh_tiktok' };
+  const LS_KEYS = { episode:'edh_episode', social:'edh_social', tiktok:'edh_tiktok', ticker:'edh_ticker' };
   const metaFields = [
     { el: episodeField, key: LS_KEYS.episode, def: '' },
     { el: socialField,  key: LS_KEYS.social,  def: '@EstanteDoHeroiGeek' },
@@ -2238,7 +2349,7 @@
   ];
 
   function getMetaPayload(){
-    return { type:'meta', episode: episodeField.textContent, social: socialField.textContent, tiktok: tiktokField.textContent };
+    return { type:'meta', episode: episodeField.textContent, social: socialField.textContent, tiktok: tiktokField.textContent, ticker: state.ticker };
   }
   function applyMetaPayload(msg){
     /* textContent, not innerHTML: these fields only ever hold plain text, and using
@@ -2247,6 +2358,8 @@
     episodeField.textContent = msg.episode || '';
     socialField.textContent = msg.social || '';
     tiktokField.textContent = msg.tiktok || '';
+    tickerInput.value = msg.ticker || '';
+    applyTicker(msg.ticker || '');
   }
 
   function initEditablePanels(){
@@ -2254,6 +2367,10 @@
       const saved = safeLocalStorageGet(key);
       el.textContent = saved !== null ? saved : def;
     });
+
+    const savedTicker = safeLocalStorageGet(LS_KEYS.ticker) || '';
+    tickerInput.value = savedTicker;
+    applyTicker(savedTicker);
 
     [episodeField, socialField, tiktokField].forEach((el) => {
       el.addEventListener('keydown', (e) => {
@@ -2267,6 +2384,25 @@
         safeLocalStorageSet(key, el.textContent);
         sendData(getMetaPayload());
       });
+    });
+
+    tickerInput.addEventListener('input', () => {
+      if (state.role === 'guest') return; // safety net: guests never see this panel anyway
+      applyTicker(tickerInput.value);
+      safeLocalStorageSet(LS_KEYS.ticker, tickerInput.value);
+      sendData(getMetaPayload());
+    });
+
+    tickerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const opening = tickerPanel.style.display === 'none';
+      tickerPanel.style.display = opening ? 'block' : 'none';
+      if (opening) tickerInput.focus();
+    });
+    document.addEventListener('click', (e) => {
+      if (tickerPanel.style.display !== 'none' && !tickerPanel.contains(e.target) && e.target !== tickerBtn && !tickerBtn.contains(e.target)){
+        tickerPanel.style.display = 'none';
+      }
     });
   }
 
@@ -2284,6 +2420,7 @@
       slideshowBtn.style.display = 'none';
       localSpotlightWrap.style.display = 'none';
       remoteSpotlightWrap.style.display = 'none';
+      tickerWrap.style.display = 'none'; // guest sees the ticker bar, just can't edit it
     }
   }
 
