@@ -313,6 +313,9 @@
     padding-bottom:14px;
     flex-shrink:0;
   }
+  /* "AO VIVO" (duplica o que já aparece no letreiro) e a logo do canal saíram
+     daqui pra sobrar mais espaço vertical pra câmera/tela compartilhada. */
+  #livePill, .top-bar .show-logo{ display:none !important; }
 
   .top-bar .show-logo{
     height:46px;
@@ -408,6 +411,8 @@
   .badge svg{ width:14px; height:14px; }
   .badge.muted{ color:var(--red); }
   .badge.on{ color:var(--green); }
+  /* Ícone de mudo escondido: só o nome aparece no rótulo da câmera agora. */
+  .tile-label .badge{ display:none; }
 
   .empty-tile{
     height:100%; width:100%;
