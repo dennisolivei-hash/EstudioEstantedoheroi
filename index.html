@@ -558,6 +558,39 @@
     display:none;
   }
 
+  /* Tela compartilhada maximizada (clicou em "aumentar"): ela ocupa o palco
+     inteiro; câmeras flutuam por cima na lateral direita, e a capa/apresentação
+     de slides flutua na lateral esquerda. Continua reversível — clicar de novo
+     em "aumentar/diminuir" tira tudo disso e volta ao layout normal. */
+  #stageGrid.screen-overlay{
+    grid-template-rows:0 1fr;
+  }
+  #stageGrid.screen-overlay #localTile,
+  #stageGrid.screen-overlay #remoteTile,
+  #stageGrid.screen-overlay #remoteTile2{
+    position:fixed;
+    width:190px; height:120px;
+    right:26px;
+    z-index:41;
+    box-shadow:0 10px 30px rgba(0,0,0,.6);
+  }
+  #stageGrid.screen-overlay #localTile{ bottom:112px; }
+  #stageGrid.screen-overlay #remoteTile{ bottom:246px; }
+  #stageGrid.screen-overlay #remoteTile2{ bottom:380px; }
+  #stageGrid.screen-overlay #imageRow{
+    grid-row:2;
+    grid-column:1 / -1;
+  }
+  #stageGrid.screen-overlay #imageRow #coverTile{
+    display:flex;
+    position:fixed;
+    width:190px; height:120px;
+    left:26px;
+    bottom:112px;
+    z-index:41;
+    box-shadow:0 10px 30px rgba(0,0,0,.6);
+  }
+
   video::-webkit-media-controls{ display:none !important; }
 
   .side-panel{
@@ -740,15 +773,19 @@
       width:120px; height:80px;
       right:16px; bottom:104px;
     }
-    #stageGrid.screen-pip-mode #localTile,
-    #stageGrid.screen-pip-mode #remoteTile,
-    #stageGrid.screen-pip-mode #remoteTile2{
+    #stageGrid.screen-overlay #localTile,
+    #stageGrid.screen-overlay #remoteTile,
+    #stageGrid.screen-overlay #remoteTile2{
       width:120px; height:80px;
       right:16px;
     }
-    #stageGrid.screen-pip-mode #localTile{ bottom:104px; }
-    #stageGrid.screen-pip-mode #remoteTile{ bottom:198px; }
-    #stageGrid.screen-pip-mode #remoteTile2{ bottom:292px; }
+    #stageGrid.screen-overlay #localTile{ bottom:104px; }
+    #stageGrid.screen-overlay #remoteTile{ bottom:198px; }
+    #stageGrid.screen-overlay #remoteTile2{ bottom:292px; }
+    #stageGrid.screen-overlay #imageRow #coverTile{
+      width:120px; height:80px;
+      left:16px; bottom:104px;
+    }
   }
 </style>
 </head>
@@ -1385,12 +1422,21 @@
       : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>';
     expandBtn.title = active ? 'Reduzir exibição' : 'Aumentar exibição';
   }
+  /* When the shared screen is maximized, it should fill the whole stage with the
+     cameras and the cover/slideshow tile floating on top of it (right/left), instead
+     of splitting the grid with a reserved camera strip. Only kicks in for screen
+     share + expanded at the same time; a plain expanded image is unaffected. */
+  function updateScreenOverlayMode(){
+    const overlay = state.imageExpanded && imageTile.classList.contains('screen-active');
+    stageGrid.classList.toggle('screen-overlay', overlay);
+  }
   function setExpanded(val, fromRemote){
     state.imageExpanded = val;
     imageRow.classList.toggle('expanded', val);
     stageGrid.classList.toggle('expanded', val);
     updateExpandUI(val);
     if (val && state.camSpotlightTarget) applyCamSpotlight(null);
+    updateScreenOverlayMode();
     if (!fromRemote) sendData({ type:'expand-state', expanded: val });
   }
   function refreshExpandAvailability(){
@@ -1607,11 +1653,13 @@
        que sempre ocupava a tela toda e não tinha como desfazer. O botão de
        aumentar/diminuir (expandBtn) já existente cuida do resto. */
     if (state.imageExpanded) setExpanded(false);
+    updateScreenOverlayMode();
     refreshExpandAvailability();
   }
   function hideScreenVideo(){
     screenVideo.srcObject = null;
     imageTile.classList.remove('screen-active');
+    updateScreenOverlayMode();
     refreshExpandAvailability();
   }
 
